@@ -49,7 +49,4 @@ This repository is a minimal single-user prototype for an AI-powered RFP managem
  - Frontend: React (Vite)
  - AI parsing: `backend/services/aiService.js` has a heuristic parser and hooks for LLMs
 
- Support
- - If you want Gmail auto-read instead of SendGrid, I can re-add an optional module — but SendGrid inbound parse (or manual paste) is the maintained flow.
-
- That's it — open the frontend, create an RFP, send to vendors, and test proposals.
+ That's it, open the frontend, create an RFP, send to vendors, and test proposals.
