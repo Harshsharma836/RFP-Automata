@@ -4,7 +4,13 @@ require('dotenv').config();
 const logger = require('./logger');
 
 const app = express();
-app.use(bodyParser.json());
+// Capture raw body for webhook signature verification
+app.use(bodyParser.json({
+  verify: function (req, res, buf) {
+    req.rawBody = buf.toString();
+  }
+}));
+app.use(bodyParser.urlencoded({ extended: true, verify: function (req, res, buf) { req.rawBody = buf.toString(); } }));
 
 // Enable CORS for development (allow requests from the frontend dev server)
 app.use((req, res, next) => {
@@ -25,6 +31,7 @@ app.use('/api/rfps', require('./routes/rfps'));
 app.use('/api/vendors', require('./routes/vendors'));
 app.use('/api/proposals', require('./routes/proposals'));
 app.use('/api/send-rfp', require('./routes/send'));
+app.use('/api/webhooks', require('./routes/webhooks'));
 
 // health
 app.get('/health', (req, res) => res.json({ ok: true }));

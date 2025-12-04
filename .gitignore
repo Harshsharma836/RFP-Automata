@@ -3,3 +3,6 @@
 
 # Ignore all node_modules folders anywhere
 **/node_modules
+
+# Gmail integration files (credentials + tokens)
+# (removed - reverting to SendGrid webhooks)

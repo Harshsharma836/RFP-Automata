@@ -20,6 +20,7 @@ router.get('/', async (req, res) => {
     const q = await db.query('SELECT * FROM vendors ORDER BY name');
     res.json({ ok: true, vendors: q.rows });
   } catch (err) {
+    console.log(err);
     logger.error('Error fetching vendors', { err: err.message });
     res.status(500).json({ error: err.message });
   }

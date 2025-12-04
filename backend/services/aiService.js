@@ -7,12 +7,8 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 console.log("GOOGLE_API_KEY:", GOOGLE_API_KEY ? "Loaded" : "Missing");
 
-// Init Google Client
 const ai = GOOGLE_API_KEY ? new GoogleGenerativeAI(GOOGLE_API_KEY) : null;
 
-/**
- * PARSE RFP TEXT (AI + fallback)
- */
 async function parseRfpFromText(naturalText) {
   logger.info("parseRfpFromText called");
 
@@ -41,7 +37,6 @@ ${naturalText}
 `.trim();
 
   try {
-    console.log("***************************************************");
 
     const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
     const response = await model.generateContent(prompt);
@@ -59,16 +54,11 @@ ${naturalText}
       items: Array.isArray(parsed.items) ? parsed.items : [],
     };
   } catch (err) {
-    console.log("========= GEMINI ERROR =========");
     console.dir(err, { depth: 10 });
-    console.log("========= END ERROR =========");
     return parseRfpHeuristic(naturalText);
   }
 }
 
-/**
- * HEURISTIC RFP PARSER
- */
 function parseRfpHeuristic(naturalText) {
   const result = {
     title: naturalText.split("\n")[0].slice(0, 120),
@@ -96,20 +86,19 @@ function parseRfpHeuristic(naturalText) {
   return result;
 }
 
-/**
- * PARSE PROPOSAL (AI + fallback)
- */
 async function parseProposalText(text) {
   logger.info("parseProposalText called");
 
   if (!ai) return parseProposalHeuristic(text);
 
   const prompt = `
-You are a vendor proposal parser. Convert the proposal into JSON.
+You are a vendor proposal parser and scorer. Convert the proposal into JSON.
 
 STRICT RULES:
 - Only valid JSON
 - No markdown, no explanation
+- Score 0-100 (0=poor, 100=excellent)
+- Look for: clear pricing, delivery timeline, warranty, payment terms
 
 JSON FORMAT:
 {
@@ -118,7 +107,8 @@ JSON FORMAT:
     { "description": "string", "amount": number }
   ],
   "terms": "string or null",
-  "raw": "string"
+  "score": "0-100 number",
+  "feedback": "brief quality assessment"
 }
 
 PROPOSAL TEXT:
@@ -133,9 +123,12 @@ ${text}
     const parsed = JSON.parse(clean);
 
     return {
-      total: parsed.total ? parseInt(parsed.total) : null,
+      total_price: parsed.total ? parseInt(parsed.total) : null,
       line_items: Array.isArray(parsed.line_items) ? parsed.line_items : [],
       terms: parsed.terms || null,
+      ai_score: parsed.score || 50,
+      ai_feedback: parsed.feedback || "Proposal processed",
+      json_data: parsed,
       raw: text,
     };
   } catch (err) {
@@ -146,16 +139,13 @@ ${text}
   }
 }
 
-/**
- * HEURISTIC PROPOSAL PARSER
- */
 function parseProposalHeuristic(text) {
-  const proposal = { total: null, line_items: [], terms: null, raw: text };
+  const proposal = { total_price: null, line_items: [], terms: null, raw: text };
 
   const totalMatch =
     text.match(/total\s*[:\-\s]*\$?([0-9,]+\.?[0-9]*)/i) ||
     text.match(/\$([0-9,]+\.?[0-9]*)\s*total/i);
-  if (totalMatch) proposal.total = parseFloat(totalMatch[1].replace(/,/g, ""));
+  if (totalMatch) proposal.total_price = parseFloat(totalMatch[1].replace(/,/g, ""));
 
   const lineRegex = /([A-Za-z0-9\s\-]+)\s*[:\-]\s*\$?([0-9,]+\.?[0-9]*)/g;
   let li;
@@ -169,13 +159,20 @@ function parseProposalHeuristic(text) {
   const termsMatch = text.match(/(net\s*\d{1,2}|warranty.*?\d+\s*year)/i);
   if (termsMatch) proposal.terms = termsMatch[0];
 
+  // Score based on completeness
+  let score = 40; // base score
+  if (proposal.total_price) score += 20;
+  if (proposal.line_items.length >= 2) score += 20;
+  if (proposal.terms) score += 20;
+  
+  proposal.ai_score = Math.min(score, 95);
+  proposal.ai_feedback = `Proposal has ${proposal.line_items.length} items, ${proposal.terms ? 'includes terms' : 'missing terms'}, total: ${proposal.total_price ? '$' + proposal.total_price : 'not specified'}`;
+  proposal.json_data = proposal;
+
   logger.info("Proposal parsed via heuristic");
   return proposal;
 }
 
-/**
- * COMPARE PROPOSALS (AI + fallback)
- */
 async function compareProposals(rfp, proposals) {
   logger.info("compareProposals called");
 
@@ -217,9 +214,6 @@ For EACH proposal return JSON object:
   }
 }
 
-/**
- * HEURISTIC COMPARISON
- */
 function compareProposalsHeuristic(rfp, proposals) {
   const ranked = proposals.map((p) => {
     const total = p.total || Number.MAX_SAFE_INTEGER;
